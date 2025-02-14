@@ -1,3 +1,3 @@
 pub struct Transaction {
-    pub data: bool,
+    pub data: u8,
 }

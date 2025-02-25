@@ -13,7 +13,7 @@ fn main() {
         let new = builder.add_virtual_public_input();
         let old = builder.add_virtual_target();
         let path = MerkleProofTarget { siblings: builder.add_virtual_hashes(256) };
-        let index = root.elements.map(|v| builder.split_le(v, 64)).concat();
+        let index = this.elements.map(|v| builder.split_le(v, 64)).concat();
         let one = builder.sub(new, old);
         builder.verify_merkle_proof::<PoseidonHash>(vec![old], &index, root, &path);
         builder.assert_one(one);

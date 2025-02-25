@@ -1,3 +1,8 @@
+use crate::zk::GoldilocksField;
+use crate::zk::Proof;
+use crate::zk::VerifyingKey;
 pub struct Transaction {
-    pub data: u8,
+    pub new: GoldilocksField,
+    pub proof: Proof,
+    pub vk: VerifyingKey,
 }

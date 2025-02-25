@@ -6,21 +6,20 @@ pub use crate::zk::Circuit;
 pub use crate::zk::Field;
 pub use crate::zk::Field64;
 pub use crate::zk::GoldilocksField;
-use crate::zk::VerifyingKey;
+pub use crate::zk::Hash;
+pub use crate::zk::MerkleProofTarget;
+pub use crate::zk::PoseidonHash;
 pub use crate::zk::WitnessWrite;
 use anyhow::Result;
-use std::collections::HashMap;
-
-pub struct Interpreter {
-    s: HashMap<Vec<u8>, GoldilocksField>,
-}
+pub struct Interpreter {}
 
 impl Interpreter {
-    pub fn new() -> Self { Self { s: HashMap::new() } }
-    pub fn get(&self, vk: &VerifyingKey) -> GoldilocksField { self.s.get(&vk.to_bytes()).cloned().unwrap_or_default() }
+    pub fn new() -> Self { todo!() }
+    pub fn prove(&self, addr: Hash) -> (GoldilocksField, [Hash; 256]) { todo!() }
+    pub fn root(&self) -> Hash { todo!() }
     pub fn transit(&mut self, tx: Transaction) -> Result<()> {
-        let entry = self.s.entry(tx.vk.to_bytes()).or_default();
-        tx.vk.verify(vec![*entry, tx.new], tx.proof)?;
-        Ok(*entry = tx.new)
+        tx.vk.verify(self.root(), tx.new, tx.proof)?;
+        Ok(self.insert(tx.vk.address(), tx.new))
     }
+    fn insert(&self, addr: Hash, value: GoldilocksField) { todo!() }
 }

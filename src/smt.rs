@@ -11,15 +11,15 @@ use plonky2::field::types::Field;
 type F = GoldilocksField;
 type Index256 = [u8; 32];
 type Key = [u8; 34];
-const TREE_DEPTH: u16 = 256;
+pub const TREE_DEPTH: u16 = 256;
 
 #[derive(Copy, Clone)]
-struct PathMask {
-    byte_pos: usize,
-    bit_mask: u8,
+pub struct PathMask {
+    pub byte_pos: usize,
+    pub bit_mask: u8,
 }
 
-const PATH_MASKS: [PathMask; TREE_DEPTH as usize] = {
+pub const PATH_MASKS: [PathMask; TREE_DEPTH as usize] = {
     let mut masks = [PathMask { byte_pos: 0, bit_mask: 0 }; TREE_DEPTH as usize];
     let mut depth = 0;
     while depth < TREE_DEPTH {
@@ -122,8 +122,8 @@ impl SparseMerkleTree {
         let mut current_hash = leaf_hash;
         let mut current_index = *index;
     
-        for (depth, sibling_hash) in proof.iter().enumerate() {
-            let depth = TREE_DEPTH - depth as u16 - 1;
+        for (i, sibling_hash) in proof.iter().enumerate() {
+            let depth = TREE_DEPTH - i as u16 - 1;
             let is_right = SparseMerkleTree::is_right_child(depth + 1, &current_index);
     
             current_hash = if is_right {
@@ -204,7 +204,7 @@ impl SparseMerkleTree {
 
     fn composite_key(depth: u16, index: &Index256) -> [u8; 34] {
         let mut key = [0u8; 34];
-        key[0..2].copy_from_slice(&depth.to_be_bytes());
+        key[0..2].copy_from_slice(&depth.to_le_bytes());
         key[2..].copy_from_slice(index);
         key
     }

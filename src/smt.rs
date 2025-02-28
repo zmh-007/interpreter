@@ -26,7 +26,7 @@ pub const PATH_MASKS: [PathMask; TREE_DEPTH as usize] = {
         let bit_pos = 255 - depth;
         masks[depth as usize] = PathMask {
             byte_pos: (bit_pos / 8) as usize,
-            bit_mask: 0x80 >> (bit_pos % 8),
+            bit_mask: 0x01 << (bit_pos % 8),
         };
         depth += 1;
     }

@@ -19,10 +19,8 @@ fn main() {
         let leaf_hash = builder.hash_n_to_hash_no_pad::<PoseidonHash>(vec![old]);
         let mut current_hash = leaf_hash;
 
-        for (i, sibling) in path.iter().enumerate() {
-            let depth = 256 - i as u16 - 1;
-            let bit_pos = 255 - depth as usize;
-            let bit = index_bits[bit_pos];
+        for (depth, sibling) in path.iter().enumerate() {
+            let bit = index_bits[depth];
         
             let left = HashOutTarget {
                 elements: core::array::from_fn(|i| builder.select(bit, sibling.elements[i], current_hash.elements[i])),

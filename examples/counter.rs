@@ -9,7 +9,7 @@ use plonky2::hash::merkle_proofs::MerkleProofTarget;
 use plonky2::hash::poseidon::PoseidonHash;
 use plonky2::plonk::config::Hasher;
 fn main() {
-    let (vk, pf) = VerificationKey::setup(|builder, [this, root, mesg]| {
+    let (vk, pf) = VerificationKey::setup::<true>(|builder, [this, root, mesg]| {
         let hash_zero = builder.constant_hash(Hash::ZERO);
         let contract_storage_digest_index = this.elements.iter().flat_map(|&v| builder.split_le(v, 64)).collect::<Vec<_>>();
         let contract_storage_slot_index = hash_zero.elements.iter().flat_map(|&v| builder.split_le(v, 64)).collect::<Vec<_>>();

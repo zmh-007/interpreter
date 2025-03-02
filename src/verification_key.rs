@@ -43,7 +43,7 @@ impl VerificationKey {
     pub fn verify(&self, root: Hash, mesg: Hash, proof: Proof) -> Result<()> { (VerifierCircuitData { verifier_only: VerifierOnlyCircuitData { constants_sigmas_cap: self.constants_sigmas_cap.clone(), circuit_digest: self.circuit_digest }, common: Self::common() }).verify(ProofWithPublicInputs { proof, public_inputs: [self.address().elements, root.elements, mesg.elements].concat() }) }
     pub fn address(&self) -> Hash { PoseidonHash::hash_no_pad(&self.constants_sigmas_cap.0.iter().map(|v| v.elements).flatten().chain(self.circuit_digest.elements).collect::<Vec<_>>()) }
     fn common() -> CommonCircuitData<GoldilocksField, 2> {
-        static COMMON: LazyLock<CommonCircuitData<GoldilocksField, 2>> = LazyLock::new(|| VerificationKey::compile::<false>(|_, _| vec![]).0.common);
+        static COMMON: LazyLock<CommonCircuitData<GoldilocksField, 2>> = LazyLock::new(|| VerificationKey::compile::<true>(|_, _| vec![]).0.common);
         COMMON.clone()
     }
     fn compile<const ZK: bool>(f: impl FnOnce(&mut CircuitBuilder<GoldilocksField, 2>, [HashOutTarget; 3]) -> Vec<Target>) -> (CircuitData<GoldilocksField, Config, 2>, CircuitData<GoldilocksField, Config, 2>, [HashOutTarget; 3], Vec<Target>, ProofWithPublicInputsTarget<2>) {

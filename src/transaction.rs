@@ -1,8 +1,10 @@
-use crate::zk::GoldilocksField;
-use crate::zk::Proof;
-use crate::zk::VerifyingKey;
+use crate::GoldilocksField;
+use crate::Hash;
+use crate::Proof;
+use crate::VerificationKey;
+#[derive(Debug, Clone)]
 pub struct Transaction {
-    pub new: GoldilocksField,
     pub proof: Proof,
-    pub vk: VerifyingKey,
+    pub vk: VerificationKey,
+    pub updates: Vec<(Hash, [GoldilocksField; 8])>,
 }

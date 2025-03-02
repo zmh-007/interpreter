@@ -2,7 +2,9 @@ use crate::GoldilocksField;
 use crate::Hash;
 use crate::Proof;
 use crate::VerificationKey;
-#[derive(Debug, Clone)]
+use serde::Deserialize;
+use serde::Serialize;
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub proof: Proof,
     pub vk: VerificationKey,

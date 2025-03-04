@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use plonky2::{field::{goldilocks_field::GoldilocksField, types::Field}, plonk::config::Hasher};
+use plonky2::{field::{goldilocks_field::GoldilocksField, types::Field}, plonk::config::{GenericHashOut, Hasher}};
 pub type Hash = plonky2::hash::hash_types::HashOut<GoldilocksField>;
 use rand::{rng, Rng};
 use std::collections::HashMap;
@@ -37,11 +37,11 @@ fn benchmark(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("hash_keys", |b| {
+    c.bench_function("flat_keys", |b| {
         b.iter(|| {
             let mut map = HashMap::new();
-            for ((k1, _), v) in pairs.iter().zip(values.iter()) {
-                map.insert(black_box(k1), black_box(*v));
+            for ((k1, k2), v) in pairs.iter().zip(values.iter()) {
+                map.insert(black_box(k1.to_bytes().iter().chain(k2.to_bytes().iter()).cloned().collect::<Vec<u8>>()), black_box(*v));
             }
             black_box(map)
         });
@@ -59,11 +59,11 @@ fn benchmark(c: &mut Criterion) {
     });
 
     let mut tuple_map = HashMap::new();
-    let mut single_map = HashMap::new();
+    let mut flat_map = HashMap::new();
     let mut merged_map = HashMap::new();
     for ((k1, k2), v) in pairs.iter().zip(values.iter()) {
         tuple_map.insert((k1.clone(), k2.clone()), *v);
-        single_map.insert(k1.clone(), v);
+        flat_map.insert(k1.to_bytes().iter().chain(k2.to_bytes().iter()).cloned().collect::<Vec<u8>>(), v);
         let merged_key = PoseidonHash::two_to_one(k1.clone(), k2.clone());
         merged_map.insert(merged_key.clone(), *v);
     }
@@ -76,10 +76,10 @@ fn benchmark(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("single_key_lookup", |b| {
+    c.bench_function("flat_key_lookup", |b| {
         b.iter(|| {
-            for ((k1, _), _) in pairs.iter().zip(values.iter()) {
-                black_box(single_map.get(&black_box(k1.clone())));
+            for ((k1, k2), _) in pairs.iter().zip(values.iter()) {
+                black_box(flat_map.get(&black_box(k1.to_bytes().iter().chain(k2.to_bytes().iter()).cloned().collect::<Vec<u8>>())));
             }
         });
     });
@@ -88,7 +88,7 @@ fn benchmark(c: &mut Criterion) {
         b.iter(|| {
             for ((k1, k2), _) in pairs.iter().zip(values.iter()) {
                 let merged_key = PoseidonHash::two_to_one(k1.clone(), k2.clone());
-                black_box(single_map.get(&black_box(merged_key)));
+                black_box(merged_map.get(&black_box(merged_key)));
             }
         });
     });

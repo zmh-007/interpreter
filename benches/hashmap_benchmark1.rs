@@ -5,6 +5,12 @@ use rand::{rng, Rng};
 use std::collections::HashMap;
 use plonky2::hash::poseidon::PoseidonHash;
 
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+struct DigestKey {
+    addr: Hash,
+    index: Hash,
+}
+
 fn random_hash<R: Rng>(rng: &mut R) -> Hash {
     Hash {
         elements: std::array::from_fn(|_| GoldilocksField::from_canonical_u64(rng.random())),
@@ -58,14 +64,26 @@ fn benchmark(c: &mut Criterion) {
         });
     });
 
+    c.bench_function("struct_keys", |b| {
+        b.iter(|| {
+            let mut map = HashMap::new();
+            for ((k1, k2), v) in pairs.iter().zip(values.iter()) {
+                map.insert(black_box(DigestKey{addr: *k1, index: *k2}), black_box(*v));
+            }
+            black_box(map)
+        });
+    });
+
     let mut tuple_map = HashMap::new();
     let mut flat_map = HashMap::new();
     let mut merged_map = HashMap::new();
+    let mut struct_map = HashMap::new();
     for ((k1, k2), v) in pairs.iter().zip(values.iter()) {
         tuple_map.insert((k1.clone(), k2.clone()), *v);
         flat_map.insert(k1.to_bytes().iter().chain(k2.to_bytes().iter()).cloned().collect::<Vec<u8>>(), v);
         let merged_key = PoseidonHash::two_to_one(k1.clone(), k2.clone());
         merged_map.insert(merged_key.clone(), *v);
+        struct_map.insert(DigestKey{addr: *k1, index: *k2}, *v);
     }
 
     c.bench_function("tuple_key_lookup", |b| {
@@ -89,6 +107,14 @@ fn benchmark(c: &mut Criterion) {
             for ((k1, k2), _) in pairs.iter().zip(values.iter()) {
                 let merged_key = PoseidonHash::two_to_one(k1.clone(), k2.clone());
                 black_box(merged_map.get(&black_box(merged_key)));
+            }
+        });
+    });
+
+    c.bench_function("struct_key_lookup", |b| {
+        b.iter(|| {
+            for ((k1, k2), _) in pairs.iter().zip(values.iter()) {
+                black_box(struct_map.get(&black_box(DigestKey{addr: *k1, index: *k2})));
             }
         });
     });

@@ -1,3 +1,5 @@
+use std::array::from_fn;
+use std::ptr::copy_nonoverlapping;
 use crate::GoldilocksField;
 use crate::Hash;
 use crate::Transaction;
@@ -5,43 +7,115 @@ use anyhow::Result;
 use plonky2::field::types::Field;
 use plonky2::hash::poseidon::PoseidonHash;
 use plonky2::plonk::config::Hasher;
-use std::array::from_fn;
 use std::collections::HashMap;
-use std::iter::once;
 use std::sync::LazyLock;
+
 #[derive(Debug, Default, Clone)]
 pub struct State {
     leaves: HashMap<(Hash, Hash), [GoldilocksField; 8]>,
-    digests: HashMap<Vec<bool>, Hash>,
+    digests: HashMap<[u8; 66], Hash>,
 }
 impl State {
-    pub fn contract_storage_digest(&self, addr: &Hash) -> Hash { self.get_digest(&Self::hash_to_index(addr)) }
-    pub fn contract_storage_digest_path(&self, addr: &Hash) -> [Hash; 256] { self.proof_by_index(&[], &Self::hash_to_index(addr)) }
+    pub fn contract_storage_digest(&self, addr: &Hash) -> Hash { self.get_digest(256, &Self::hash_to_index(addr, &Hash::ZERO)) }
+    pub fn contract_storage_digest_path(&self, addr: &Hash) -> [Hash; 256] { self.proof(256, &Self::hash_to_index(addr, &Hash::ZERO)) }
     pub fn contract_storage_slot(&self, addr: &Hash, key: &Hash) -> [GoldilocksField; 8] { self.leaves.get(&(*addr, *key)).cloned().unwrap_or_default() }
-    pub fn contract_storage_slot_path(&self, addr: &Hash, key: &Hash) -> [Hash; 256] { self.proof_by_index(&Self::hash_to_index(addr), &Self::hash_to_index(key)) }
-    pub fn root(&self) -> Hash { self.get_digest(&vec![]) }
+    pub fn contract_storage_slot_path(&self, addr: &Hash, key: &Hash) -> [Hash; 256] { self.proof(512, &Self::hash_to_index(addr, key)) }
+    pub fn root(&self) -> Hash { self.get_digest(0, &[0u8; 64]) }
     pub fn transit(&mut self, tx: Transaction) -> Result<()> {
         tx.vk.verify(self.root(), PoseidonHash::two_to_one(Hash::ZERO, tx.updates.iter().fold(Hash::ZERO, |left, (key, value)| PoseidonHash::hash_no_pad(&[&left.elements[..], &key.elements[..], &value[..]].concat()))), tx.proof)?;
         Ok(tx.updates.into_iter().for_each(|(key, value)| self.update(tx.vk.address(), key, value)))
     }
     fn update(&mut self, addr: Hash, key: Hash, value: [GoldilocksField; 8]) {
-        let mut index = [&addr, &key].map(Self::hash_to_index).concat();
-        self.digests.insert(index.clone(), PoseidonHash::hash_no_pad(&value));
+        let index = Self::hash_to_index(&addr, &key);
+        self.digests.insert(Self::composite_key(512, &index), PoseidonHash::hash_no_pad(&value));
         self.leaves.insert((addr, key), value);
-        for _ in 0..512 {
-            index.pop();
-            let [left, right] = [false, true].map(|v| self.get_digest(&index.iter().cloned().chain(once(v)).collect::<Vec<_>>()));
-            self.digests.insert(index.clone(), PoseidonHash::two_to_one(left, right));
+        for depth in (1..=512).rev() {
+            let parent_index = Self::parent_index(depth, &index);
+            let sibling_index = Self::get_sibling_index(depth, &index);
+            let (left, right) = {
+                let [current, sibling] = [&index, &sibling_index].map(|idx| self.get_digest(depth, idx));
+                [(current, sibling), (sibling, current)][Self::is_right_child(depth, &index) as usize]
+            };
+            self.digests.insert(Self::composite_key(depth - 1, &parent_index), PoseidonHash::two_to_one(left, right));
         }
     }
-    fn get_digest(&self, index: &[bool]) -> Hash {
+    fn get_digest(&self, depth: u16, index: &[u8; 64]) -> Hash {
         static DEFAULTS: LazyLock<[Hash; 513]> = LazyLock::new(|| {
             let mut defaults = [PoseidonHash::hash_no_pad(&[GoldilocksField::ZERO; 8]); 513];
             (0..512).rev().for_each(|i| defaults[i] = PoseidonHash::two_to_one(defaults[i + 1], defaults[i + 1]));
             defaults
         });
-        self.digests.get(index).cloned().unwrap_or(DEFAULTS[index.len()])
+        self.digests.get(&Self::composite_key(depth, index)).cloned().unwrap_or(DEFAULTS[index.len()])
     }
-    fn proof_by_index(&self, prefix: &[bool], index: &[bool; 256]) -> [Hash; 256] { from_fn(|i| self.get_digest(&prefix.iter().cloned().chain(index[0..255 - i].iter().cloned()).chain(once(!index[255 - i])).collect::<Vec<_>>())) }
-    fn hash_to_index(hash: &Hash) -> [bool; 256] { from_fn(|i| hash.elements[3 - i / 64].0 >> (63 - i % 64) & 1 > 0) }
+    pub fn proof(&self, depth: u16, index: &[u8; 64]) -> [Hash; 256] {
+        let mut current_index = *index;
+        from_fn(|i| {
+            let d = depth - i as u16;
+            let hash = self.get_digest(d, &Self::get_sibling_index(d, &current_index));
+            current_index = Self::parent_index(d, &current_index);
+            hash
+        })
+    }
+    fn hash_to_index(hash1: &Hash, hash2: &Hash) -> [u8; 64] {
+        assert_eq!(std::mem::size_of::<Hash>(), 32, "Invalid Hash size");
+        let mut bytes = [0u8; 64];
+        let (first_half, second_half) = bytes.split_at_mut(32);
+        unsafe {
+            copy_nonoverlapping(hash1.elements.as_ptr().cast::<u8>(), first_half.as_mut_ptr(), 32);
+            copy_nonoverlapping(hash2.elements.as_ptr().cast::<u8>(), second_half.as_mut_ptr(), 32);
+        }
+        bytes
+    }
+    fn is_right_child(depth: u16, index: &[u8; 64]) -> bool {
+        Self::get_bit(index, depth)
+    }
+    fn parent_index(depth: u16, index: &[u8; 64]) -> [u8; 64] {
+        let mut parent = *index;
+        Self::clear_bit(&mut parent, depth);
+        parent
+    }
+    fn get_sibling_index(depth: u16, index: &[u8; 64]) -> [u8; 64] {
+        let mut sibling = *index;
+        Self::flip_bit(&mut sibling, depth);
+        sibling
+    }
+    fn get_bit(index: &[u8; 64], depth: u16) -> bool {
+        let mask = &PATH_MASKS[depth as usize - 1];
+        (index[mask.byte_pos] & mask.bit_mask) != 0
+    }
+    fn clear_bit(index: &mut [u8; 64], depth: u16) {
+        let mask = &PATH_MASKS[depth as usize - 1];
+        index[mask.byte_pos] &= !mask.bit_mask;
+    }
+    fn flip_bit(index: &mut [u8; 64], depth: u16) {
+        let mask = &PATH_MASKS[depth as usize - 1];
+        index[mask.byte_pos] ^= mask.bit_mask;
+    }
+    fn composite_key(depth: u16, index: &[u8; 64]) -> [u8; 66] {
+        let mut key = [0u8; 66];
+        key[0..2].copy_from_slice(&depth.to_le_bytes());
+        key[2..].copy_from_slice(index);
+        key
+    }
 }
+
+
+#[derive(Copy, Clone)]
+pub struct PathMask {
+    pub byte_pos: usize,
+    pub bit_mask: u8,
+}
+
+pub const PATH_MASKS: [PathMask; 512] = {
+    let mut masks = [PathMask { byte_pos: 0, bit_mask: 0 }; 512];
+    let mut depth = 0;
+    while depth < 512 {
+        let bit_pos = 512 - 1 - depth;
+        masks[depth as usize] = PathMask {
+            byte_pos: (bit_pos / 8) as usize,
+            bit_mask: 0x01 << (bit_pos % 8),
+        };
+        depth += 1;
+    }
+    masks
+};

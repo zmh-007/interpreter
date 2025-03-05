@@ -1,5 +1,5 @@
 use std::array::from_fn;
-
+use std::time::Instant;
 use interpreter::Hash;
 use interpreter::State;
 use interpreter::Transaction;
@@ -36,6 +36,7 @@ fn main() {
     let addr = vk.address();
     let key = Hash::ZERO;
     let mut s = State::default();
+    let start = Instant::now();
     for i in 0..16 {
         eprintln!("GENERATING TX: {i} ...");
         let contract_storage_digest = s.contract_storage_digest(&addr);
@@ -60,4 +61,6 @@ fn main() {
             panic!("PROVING FAILURE");
         }
     }
+    let duration = start.elapsed();
+    println!("Time elapsed: {:?}", duration);
 }

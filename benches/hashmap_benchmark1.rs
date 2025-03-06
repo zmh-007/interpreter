@@ -1,9 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use plonky2::{field::{goldilocks_field::GoldilocksField, types::Field}, plonk::config::{GenericHashOut, Hasher}};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use plonky2::{
+    field::{goldilocks_field::GoldilocksField, types::Field},
+    plonk::config::{GenericHashOut, Hasher},
+};
 pub type Hash = plonky2::hash::hash_types::HashOut<GoldilocksField>;
-use rand::{rng, Rng};
-use std::collections::HashMap;
 use plonky2::hash::poseidon::PoseidonHash;
+use rand::{Rng, rng};
+use std::collections::HashMap;
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy)]
 struct DigestKey {
@@ -28,10 +31,9 @@ fn benchmark(c: &mut Criterion) {
     let pairs: Vec<(Hash, Hash)> = (0..data_size)
         .map(|_| (random_hash(&mut rng), random_hash(&mut rng)))
         .collect();
-    
-    let values: Vec<[GoldilocksField; 8]> = (0..data_size)
-        .map(|_| random_value(&mut rng))
-        .collect();
+
+    let values: Vec<[GoldilocksField; 8]> =
+        (0..data_size).map(|_| random_value(&mut rng)).collect();
 
     c.bench_function("tuple_key", |b| {
         b.iter(|| {
@@ -47,7 +49,16 @@ fn benchmark(c: &mut Criterion) {
         b.iter(|| {
             let mut map = HashMap::new();
             for ((k1, k2), v) in pairs.iter().zip(values.iter()) {
-                map.insert(black_box(k1.to_bytes().iter().chain(k2.to_bytes().iter()).cloned().collect::<Vec<u8>>()), black_box(*v));
+                map.insert(
+                    black_box(
+                        k1.to_bytes()
+                            .iter()
+                            .chain(k2.to_bytes().iter())
+                            .cloned()
+                            .collect::<Vec<u8>>(),
+                    ),
+                    black_box(*v),
+                );
             }
             black_box(map)
         });
@@ -68,7 +79,13 @@ fn benchmark(c: &mut Criterion) {
         b.iter(|| {
             let mut map = HashMap::new();
             for ((k1, k2), v) in pairs.iter().zip(values.iter()) {
-                map.insert(black_box(DigestKey{addr: *k1, index: *k2}), black_box(*v));
+                map.insert(
+                    black_box(DigestKey {
+                        addr: *k1,
+                        index: *k2,
+                    }),
+                    black_box(*v),
+                );
             }
             black_box(map)
         });
@@ -80,10 +97,23 @@ fn benchmark(c: &mut Criterion) {
     let mut struct_map = HashMap::new();
     for ((k1, k2), v) in pairs.iter().zip(values.iter()) {
         tuple_map.insert((k1.clone(), k2.clone()), *v);
-        flat_map.insert(k1.to_bytes().iter().chain(k2.to_bytes().iter()).cloned().collect::<Vec<u8>>(), v);
+        flat_map.insert(
+            k1.to_bytes()
+                .iter()
+                .chain(k2.to_bytes().iter())
+                .cloned()
+                .collect::<Vec<u8>>(),
+            v,
+        );
         let merged_key = PoseidonHash::two_to_one(k1.clone(), k2.clone());
         merged_map.insert(merged_key.clone(), *v);
-        struct_map.insert(DigestKey{addr: *k1, index: *k2}, *v);
+        struct_map.insert(
+            DigestKey {
+                addr: *k1,
+                index: *k2,
+            },
+            *v,
+        );
     }
 
     c.bench_function("tuple_key_lookup", |b| {
@@ -97,7 +127,15 @@ fn benchmark(c: &mut Criterion) {
     c.bench_function("flat_key_lookup", |b| {
         b.iter(|| {
             for ((k1, k2), _) in pairs.iter().zip(values.iter()) {
-                black_box(flat_map.get(&black_box(k1.to_bytes().iter().chain(k2.to_bytes().iter()).cloned().collect::<Vec<u8>>())));
+                black_box(
+                    flat_map.get(&black_box(
+                        k1.to_bytes()
+                            .iter()
+                            .chain(k2.to_bytes().iter())
+                            .cloned()
+                            .collect::<Vec<u8>>(),
+                    )),
+                );
             }
         });
     });
@@ -114,7 +152,10 @@ fn benchmark(c: &mut Criterion) {
     c.bench_function("struct_key_lookup", |b| {
         b.iter(|| {
             for ((k1, k2), _) in pairs.iter().zip(values.iter()) {
-                black_box(struct_map.get(&black_box(DigestKey{addr: *k1, index: *k2})));
+                black_box(struct_map.get(&black_box(DigestKey {
+                    addr: *k1,
+                    index: *k2,
+                })));
             }
         });
     });

@@ -28,26 +28,73 @@ pub struct VerificationKey {
     circuit_digest: Hash,
 }
 impl VerificationKey {
-    pub fn setup<const ZK: bool>(f: impl FnOnce(&mut CircuitBuilder<GoldilocksField, 2>, [HashOutTarget; 3]) -> Vec<Target>) -> (Self, impl Fn([Hash; 3], Vec<GoldilocksField>) -> Result<Proof>) {
+    pub fn setup<const ZK: bool>(
+        f: impl FnOnce(&mut CircuitBuilder<GoldilocksField, 2>, [HashOutTarget; 3]) -> Vec<Target>,
+    ) -> (
+        Self,
+        impl Fn([Hash; 3], Vec<GoldilocksField>) -> Result<Proof>,
+    ) {
         let (co, ci, pis, targets, proof_with_pis_target) = Self::compile::<ZK>(f);
-        (Self { constants_sigmas_cap: co.verifier_only.constants_sigmas_cap.clone(), circuit_digest: co.verifier_only.circuit_digest }, move |hashes, values| {
-            let mut wi = PartialWitness::<GoldilocksField>::new();
-            (0..3).try_for_each(|i| wi.set_hash_target(pis[i], hashes[i]))?;
-            wi.set_target_arr(&targets, &values)?;
-            let proof_with_pis = ci.prove(wi)?;
-            let mut wo = PartialWitness::<GoldilocksField>::new();
-            wo.set_proof_with_pis_target(&proof_with_pis_target, &proof_with_pis)?;
-            Ok(co.prove(wo)?.proof)
+        (
+            Self {
+                constants_sigmas_cap: co.verifier_only.constants_sigmas_cap.clone(),
+                circuit_digest: co.verifier_only.circuit_digest,
+            },
+            move |hashes, values| {
+                let mut wi = PartialWitness::<GoldilocksField>::new();
+                (0..3).try_for_each(|i| wi.set_hash_target(pis[i], hashes[i]))?;
+                wi.set_target_arr(&targets, &values)?;
+                let proof_with_pis = ci.prove(wi)?;
+                let mut wo = PartialWitness::<GoldilocksField>::new();
+                wo.set_proof_with_pis_target(&proof_with_pis_target, &proof_with_pis)?;
+                Ok(co.prove(wo)?.proof)
+            },
+        )
+    }
+    pub fn verify(&self, root: Hash, mesg: Hash, proof: Proof) -> Result<()> {
+        (VerifierCircuitData {
+            verifier_only: VerifierOnlyCircuitData {
+                constants_sigmas_cap: self.constants_sigmas_cap.clone(),
+                circuit_digest: self.circuit_digest,
+            },
+            common: Self::common(),
+        })
+        .verify(ProofWithPublicInputs {
+            proof,
+            public_inputs: [self.address().elements, root.elements, mesg.elements].concat(),
         })
     }
-    pub fn verify(&self, root: Hash, mesg: Hash, proof: Proof) -> Result<()> { (VerifierCircuitData { verifier_only: VerifierOnlyCircuitData { constants_sigmas_cap: self.constants_sigmas_cap.clone(), circuit_digest: self.circuit_digest }, common: Self::common() }).verify(ProofWithPublicInputs { proof, public_inputs: [self.address().elements, root.elements, mesg.elements].concat() }) }
-    pub fn address(&self) -> Hash { PoseidonHash::hash_no_pad(&self.constants_sigmas_cap.0.iter().map(|v| v.elements).flatten().chain(self.circuit_digest.elements).collect::<Vec<_>>()) }
+    pub fn address(&self) -> Hash {
+        PoseidonHash::hash_no_pad(
+            &self
+                .constants_sigmas_cap
+                .0
+                .iter()
+                .map(|v| v.elements)
+                .flatten()
+                .chain(self.circuit_digest.elements)
+                .collect::<Vec<_>>(),
+        )
+    }
     fn common() -> CommonCircuitData<GoldilocksField, 2> {
-        static COMMON: LazyLock<CommonCircuitData<GoldilocksField, 2>> = LazyLock::new(|| VerificationKey::compile::<true>(|_, _| vec![]).0.common);
+        static COMMON: LazyLock<CommonCircuitData<GoldilocksField, 2>> =
+            LazyLock::new(|| VerificationKey::compile::<true>(|_, _| vec![]).0.common);
         COMMON.clone()
     }
-    fn compile<const ZK: bool>(f: impl FnOnce(&mut CircuitBuilder<GoldilocksField, 2>, [HashOutTarget; 3]) -> Vec<Target>) -> (CircuitData<GoldilocksField, Config, 2>, CircuitData<GoldilocksField, Config, 2>, [HashOutTarget; 3], Vec<Target>, ProofWithPublicInputsTarget<2>) {
-        let mut bi = CircuitBuilder::new(if ZK { CircuitConfig::standard_recursion_zk_config() } else { CircuitConfig::standard_recursion_config() });
+    fn compile<const ZK: bool>(
+        f: impl FnOnce(&mut CircuitBuilder<GoldilocksField, 2>, [HashOutTarget; 3]) -> Vec<Target>,
+    ) -> (
+        CircuitData<GoldilocksField, Config, 2>,
+        CircuitData<GoldilocksField, Config, 2>,
+        [HashOutTarget; 3],
+        Vec<Target>,
+        ProofWithPublicInputsTarget<2>,
+    ) {
+        let mut bi = CircuitBuilder::new(if ZK {
+            CircuitConfig::standard_recursion_zk_config()
+        } else {
+            CircuitConfig::standard_recursion_config()
+        });
         let pis = from_fn(|_| bi.add_virtual_hash_public_input());
         let targets = f(&mut bi, pis);
         let ci = bi.build::<Config>();
